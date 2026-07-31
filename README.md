@@ -5,7 +5,7 @@ Gestor de reconocimiento y monitoreo continuo de superficie de ataque diseñado 
 ## Caracteristicas
 - Panel HUD Interactivo para visualizar escaneos.
 - Nombres representativos automaticos basados en el dominio y la fecha.
-- Persistencia local con SQLite.
+- Persistencia local en .txt.
 - Gestion y eliminacion de tareas activas.
 
 ## Instalacion y Uso
