@@ -1,5 +1,7 @@
 import os
 import sqlite3
+import socket
+import requests
 from datetime import datetime
 import typer
 from rich import print
@@ -28,6 +30,53 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
+
+def perform_recon(domain: str, output_txt: str):
+    """Ejecuta reconocimiento completo incluyendo resolución IP, fuzzing de subdominios y directorios web."""
+    console.print(f"\n[bold cyan]🔍 Ejecutando reconocimiento y fuzzing para {domain}...[/bold cyan]")
+    
+    results = []
+    results.append("=== RECONPULSE ADVANCED SCAN REPORT ===")
+    results.append(f"Objetivo: {domain}")
+    results.append(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+
+    # 1. Resolución IP
+    try:
+        ip = socket.gethostbyname(domain)
+        results.append(f"[+] IP Principal: {ip}")
+    except Exception:
+        results.append("[-] No se pudo resolver la IP principal.")
+
+    # 2. Fuzzing / Descubrimiento de Subdominios
+    results.append("\n--- [ FUZZING DE SUBDOMINIOS ] ---")
+    common_subs = ["www", "mail", "ftp", "admin", "test", "api", "shop", "portal", "dev", "vpn", "remote"]
+    for sub in common_subs:
+        sub_domain = f"{sub}.{domain}"
+        try:
+            sub_ip = socket.gethostbyname(sub_domain)
+            results.append(f"  [FOUND] {sub_domain} -> {sub_ip}")
+        except Exception:
+            pass
+
+    # 3. Fuzzing de Directorios / Rutas Web (Variaciones comunes)
+    results.append("\n--- [ FUZZING DE DIRECTORIOS (WEB) ] ---")
+    target_url = f"http://{domain}"
+    common_paths = ["admin", "login", "dashboard", "api", "server-status", "config.json", "backup.zip", "test", "robots.txt"]
+    
+    for path in common_paths:
+        url = f"{target_url}/{path}"
+        try:
+            response = requests.get(url, timeout=3, allow_redirects=False)
+            if response.status_code in [200, 301, 302, 403]:
+                results.append(f"  [HTTP {response.status_code}] -> {url}")
+        except Exception:
+            pass
+
+    # Guardar todo limpio en el .txt físico
+    with open(output_txt, "w") as f:
+        f.write("\n".join(results) + "\n")
+    
+    console.print(f"[bold green]✔ ¡Reconocimiento completado y guardado en {output_txt}![/bold green]")
 
 @app.command()
 def dashboard():
@@ -64,20 +113,21 @@ def dashboard():
 @app.command()
 def add(
     domain: str = typer.Option(..., prompt="🌐 Introduce el dominio principal (ej: google.com)"),
-    custom_name: str = typer.Option(..., prompt="🏷️ Introduce un nombre personalizado para la tarea y su .txt (ej: google-bug bounty)"),
+    custom_name: str = typer.Option(..., prompt="🏷️ Introduce un nombre personalizado para la tarea y su .txt (ej: google-bbp)"),
     hours: int = typer.Option(6, prompt="⏱️ Intervalo de tiempo en horas para cada escaneo")
 ):
-    """Crea un nuevo monitoreo con nombre personalizado y archivo .txt asociado."""
+    """Crea un nuevo monitoreo, ejecuta el reconocimiento y genera el .txt con los resultados."""
     init_db()
     
     clean_domain = domain.replace("https://", "").replace("http://", "").replace("/", "")
-    
-    # Limpiar el nombre personalizado para que sea un nombre de archivo seguro (sin espacios raros)
     safe_filename = custom_name.strip().replace(" ", "_").lower()
     txt_filename = f"{safe_filename}.txt"
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     try:
+        # Ejecutar el escaneo y fuzzing inicial antes de guardar en base de datos
+        perform_recon(clean_domain, txt_filename)
+
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         cursor.execute(
@@ -86,15 +136,10 @@ def add(
         )
         conn.commit()
         conn.close()
-
-        # Crear el archivo .txt vacío inicialmente si no existe para que esté listo
-        with open(txt_filename, "w") as f:
-            f.write(f"# Resultados de monitoreo para {clean_domain} - Creado el {created_at}\n")
         
-        console.print(f"\n[bold green]✔ ¡Monitoreo creado con éxito![/bold green]")
+        console.print(f"\n[bold green]✔ ¡Monitoreo registrado con éxito en el panel![/bold green]")
         console.print(f"📌 [cyan]Nombre de Tarea:[/cyan] [bold white]{custom_name}[/bold white]")
-        console.print(f"🎯 [cyan]Objetivo:[/cyan] {clean_domain}")
-        console.print(f"📁 [cyan]Fichero de Guardado:[/cyan] [bold yellow]{txt_filename}[/bold yellow]\n")
+        console.print(f"📁 [cyan]Fichero de Resultados:[/cyan] [bold yellow]{txt_filename}[/bold yellow]\n")
     except Exception as e:
         console.print(f"[bold red]❌ Error: Es posible que ese nombre de tarea ya exista. Prueba con otro.[/bold red]")
 
